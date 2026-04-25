@@ -1,0 +1,29 @@
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\TaskController;
+use App\Http\Controllers\Api\TaskExecutionController;
+
+Route::prefix('auth')->group(function (): void {
+    Route::post('register', [AuthController::class, 'register']);
+    Route::post('login', [AuthController::class, 'login']);
+
+    Route::middleware('auth:sanctum')->group(function (): void {
+        Route::get('me', [AuthController::class, 'me']);
+        Route::post('logout', [AuthController::class, 'logout']);
+    });
+});
+
+Route::middleware('auth:sanctum')->group(function (): void {
+    Route::post('tasks/{task}/complete', [TaskController::class, 'complete']);
+    Route::post('tasks/{task}/executions/start', [TaskExecutionController::class, 'start']);
+    Route::post('task-executions/{taskExecution}/pause', [TaskExecutionController::class, 'pause']);
+    Route::post('task-executions/{taskExecution}/resume', [TaskExecutionController::class, 'resume']);
+    Route::post('task-executions/{taskExecution}/stop', [TaskExecutionController::class, 'stop']);
+    Route::post('task-executions/{taskExecution}/complete', [TaskExecutionController::class, 'complete']);
+
+    Route::apiResource('tasks', TaskController::class);
+    Route::apiResource('task-executions', TaskExecutionController::class);
+});

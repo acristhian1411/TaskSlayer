@@ -1,0 +1,21 @@
+info:
+  name: login
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{base_url}}/auth/login?email=demo@taskslayer.local&password=password"
+  params:
+    - name: email
+      value: demo@taskslayer.local
+      type: query
+    - name: password
+      value: password
+      type: query
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

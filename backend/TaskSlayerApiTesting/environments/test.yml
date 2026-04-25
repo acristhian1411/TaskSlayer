@@ -1,0 +1,6 @@
+name: test
+variables:
+  - name: token
+    value: 2|cRQZbq1gBM3m2PBeFXfK9qACAOZofYOVMJQQ2vdB3fd527d2
+  - name: base_url
+    value: http://localhost:8080/api

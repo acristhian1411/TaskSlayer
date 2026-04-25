@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: taskslayer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-taskslayer}
+      POSTGRES_USER: ${DB_USERNAME:-taskslayer}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USERNAME:-taskslayer} -d
+            ${DB_DATABASE:-taskslayer}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - taskslayer-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
+    container_name: taskslayer-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APACHE_DOCUMENT_ROOT: /var/www/html/public
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-taskslayer}
+      DB_USERNAME: ${DB_USERNAME:-taskslayer}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      APACHE_RUN_USER: www-data
+      APACHE_RUN_GROUP: www-data
+    ports:
+      - "${BACKEND_PORT:-8080}:80"
+    volumes:
+      - ./backend:/var/www/html
+    networks:
+      - taskslayer-net
+
+  frontend:
+    image: node:22-alpine
+    container_name: taskslayer-frontend
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./:/app
+      - node_modules:/app/node_modules
+    command: sh -c "if [ ! -f package.json ]; then echo 'No package.json found in
+      /app'; tail -f /dev/null; else npm install && npm run dev -- --host
+      0.0.0.0 --port 5173; fi"
+    networks:
+      - taskslayer-net
+
+volumes:
+  postgres_data:
+  node_modules:
+
+networks:
+  taskslayer-net:
+    driver: bridge
