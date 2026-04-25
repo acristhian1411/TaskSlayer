@@ -25,6 +25,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('task-executions/{taskExecution}/resume', [TaskExecutionController::class, 'resume']);
     Route::post('task-executions/{taskExecution}/stop', [TaskExecutionController::class, 'stop']);
     Route::post('task-executions/{taskExecution}/complete', [TaskExecutionController::class, 'complete']);
+    Route::get('task-executions/metrics/summary', [TaskExecutionController::class, 'summary']);
+    Route::get('task-executions/metrics/time-by-task', [TaskExecutionController::class, 'timeByTask']);
+    Route::get('task-executions/metrics/daily-productivity', [TaskExecutionController::class, 'dailyProductivity']);
     Route::post('rewards/{reward}/redeem', [RewardController::class, 'redeem']);
     Route::get('points/balance', [RewardController::class, 'pointsBalance']);
     Route::get('points/ledger', [UserPointsLedgerController::class, 'index']);

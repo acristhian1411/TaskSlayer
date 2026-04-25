@@ -13,6 +13,88 @@ use Illuminate\Support\Facades\DB;
 
 class TaskExecutionService
 {
+    public function summaryForUser(User $user, array $filters = []): array
+    {
+        $query = TaskExecution::query()
+            ->where('user_id', $user->id);
+
+        if (!empty($filters['from'])) {
+            $query->where('started_at', '>=', Carbon::parse($filters['from'])->startOfDay());
+        }
+
+        if (!empty($filters['to'])) {
+            $query->where('started_at', '<=', Carbon::parse($filters['to'])->endOfDay());
+        }
+
+        $totalSessions = (int) (clone $query)->count();
+        $completedSessions = (int) (clone $query)->where('was_completed', true)->count();
+        $totalDurationSeconds = (int) (clone $query)->sum('duration_seconds');
+
+        return [
+            'total_sessions' => $totalSessions,
+            'completed_sessions' => $completedSessions,
+            'completion_rate' => $totalSessions > 0 ? round($completedSessions / $totalSessions, 4) : 0,
+            'total_duration_seconds' => $totalDurationSeconds,
+        ];
+    }
+
+    public function timeByTaskForUser(User $user, array $filters = []): array
+    {
+        $query = DB::table('task_executions as te')
+            ->join('tasks as t', 't.id', '=', 'te.task_id')
+            ->where('te.user_id', $user->id);
+
+        if (!empty($filters['from'])) {
+            $query->where('te.started_at', '>=', Carbon::parse($filters['from'])->startOfDay());
+        }
+
+        if (!empty($filters['to'])) {
+            $query->where('te.started_at', '<=', Carbon::parse($filters['to'])->endOfDay());
+        }
+
+        return $query
+            ->selectRaw('te.task_id, t.title_original, t.title_rpg, SUM(te.duration_seconds) as total_duration_seconds, COUNT(*) as sessions')
+            ->groupBy('te.task_id', 't.title_original', 't.title_rpg')
+            ->orderByDesc('total_duration_seconds')
+            ->get()
+            ->map(fn($row): array => [
+                'task_id' => (int) $row->task_id,
+                'title_original' => $row->title_original,
+                'title_rpg' => $row->title_rpg,
+                'total_duration_seconds' => (int) $row->total_duration_seconds,
+                'sessions' => (int) $row->sessions,
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function dailyProductivityForUser(User $user, array $filters = []): array
+    {
+        $query = DB::table('task_executions as te')
+            ->where('te.user_id', $user->id);
+
+        if (!empty($filters['from'])) {
+            $query->where('te.started_at', '>=', Carbon::parse($filters['from'])->startOfDay());
+        }
+
+        if (!empty($filters['to'])) {
+            $query->where('te.started_at', '<=', Carbon::parse($filters['to'])->endOfDay());
+        }
+
+        return $query
+            ->selectRaw('DATE(te.started_at) as day, SUM(te.duration_seconds) as total_duration_seconds, COUNT(*) as sessions')
+            ->groupBy(DB::raw('DATE(te.started_at)'))
+            ->orderBy('day')
+            ->get()
+            ->map(fn($row): array => [
+                'day' => $row->day,
+                'total_duration_seconds' => (int) $row->total_duration_seconds,
+                'sessions' => (int) $row->sessions,
+            ])
+            ->values()
+            ->all();
+    }
+
     public function listForUser(User $user): Collection
     {
         return TaskExecution::query()

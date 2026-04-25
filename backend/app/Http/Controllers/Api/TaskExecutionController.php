@@ -6,6 +6,7 @@ use App\Http\Controllers\ApiController;
 use App\Http\Requests\Api\StartTaskExecutionRequest;
 use App\Http\Requests\Api\StopTaskExecutionRequest;
 use App\Http\Requests\Api\StoreTaskExecutionRequest;
+use App\Http\Requests\Api\TaskExecutionMetricsRequest;
 use App\Http\Requests\Api\UpdateTaskExecutionRequest;
 use App\Services\TaskExecutionService;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,33 @@ class TaskExecutionController extends ApiController
     {
         try {
             return $this->showAll($this->taskExecutionService->listForUser($request->user()));
+        } catch (Throwable $e) {
+            return $this->respondException($e);
+        }
+    }
+
+    public function summary(TaskExecutionMetricsRequest $request): JsonResponse
+    {
+        try {
+            return $this->showOne($this->taskExecutionService->summaryForUser($request->user(), $request->validated()));
+        } catch (Throwable $e) {
+            return $this->respondException($e);
+        }
+    }
+
+    public function timeByTask(TaskExecutionMetricsRequest $request): JsonResponse
+    {
+        try {
+            return $this->showOne($this->taskExecutionService->timeByTaskForUser($request->user(), $request->validated()));
+        } catch (Throwable $e) {
+            return $this->respondException($e);
+        }
+    }
+
+    public function dailyProductivity(TaskExecutionMetricsRequest $request): JsonResponse
+    {
+        try {
+            return $this->showOne($this->taskExecutionService->dailyProductivityForUser($request->user(), $request->validated()));
         } catch (Throwable $e) {
             return $this->respondException($e);
         }
