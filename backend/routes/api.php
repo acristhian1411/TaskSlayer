@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RewardController;
+use App\Http\Controllers\Api\TaskEventController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TaskExecutionController;
 use App\Http\Controllers\Api\UserPointsLedgerController;
@@ -25,6 +26,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('task-executions/{taskExecution}/resume', [TaskExecutionController::class, 'resume']);
     Route::post('task-executions/{taskExecution}/stop', [TaskExecutionController::class, 'stop']);
     Route::post('task-executions/{taskExecution}/complete', [TaskExecutionController::class, 'complete']);
+    Route::get('task-executions/{taskExecution}/events', [TaskEventController::class, 'executionTimeline']);
+    Route::get('task-executions/{taskExecution}/events/stats', [TaskEventController::class, 'executionStats']);
     Route::get('task-executions/metrics/summary', [TaskExecutionController::class, 'summary']);
     Route::get('task-executions/metrics/time-by-task', [TaskExecutionController::class, 'timeByTask']);
     Route::get('task-executions/metrics/daily-productivity', [TaskExecutionController::class, 'dailyProductivity']);
@@ -37,6 +40,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('reward-redemptions/me/{rewardRedemption}', [RewardController::class, 'showMyRedemption']);
 
     Route::apiResource('tasks', TaskController::class);
+    Route::apiResource('task-events', TaskEventController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::apiResource('task-executions', TaskExecutionController::class);
     Route::apiResource('rewards', RewardController::class);
 });
