@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\RewardController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TaskExecutionController;
+use App\Http\Controllers\Api\UserPointsLedgerController;
 
 Route::prefix('auth')->group(function (): void {
     Route::post('register', [AuthController::class, 'register']);
@@ -26,6 +27,9 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('task-executions/{taskExecution}/complete', [TaskExecutionController::class, 'complete']);
     Route::post('rewards/{reward}/redeem', [RewardController::class, 'redeem']);
     Route::get('points/balance', [RewardController::class, 'pointsBalance']);
+    Route::get('points/ledger', [UserPointsLedgerController::class, 'index']);
+    Route::get('points/ledger/{entry}', [UserPointsLedgerController::class, 'show']);
+    Route::get('points/summary', [UserPointsLedgerController::class, 'summary']);
     Route::get('reward-redemptions/me', [RewardController::class, 'myRedemptions']);
     Route::get('reward-redemptions/me/{rewardRedemption}', [RewardController::class, 'showMyRedemption']);
 
