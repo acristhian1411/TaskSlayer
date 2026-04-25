@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\RewardController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TaskExecutionController;
 
@@ -23,7 +24,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('task-executions/{taskExecution}/resume', [TaskExecutionController::class, 'resume']);
     Route::post('task-executions/{taskExecution}/stop', [TaskExecutionController::class, 'stop']);
     Route::post('task-executions/{taskExecution}/complete', [TaskExecutionController::class, 'complete']);
+    Route::post('rewards/{reward}/redeem', [RewardController::class, 'redeem']);
+    Route::get('points/balance', [RewardController::class, 'pointsBalance']);
+    Route::get('reward-redemptions/me', [RewardController::class, 'myRedemptions']);
+    Route::get('reward-redemptions/me/{rewardRedemption}', [RewardController::class, 'showMyRedemption']);
 
     Route::apiResource('tasks', TaskController::class);
     Route::apiResource('task-executions', TaskExecutionController::class);
+    Route::apiResource('rewards', RewardController::class);
 });
