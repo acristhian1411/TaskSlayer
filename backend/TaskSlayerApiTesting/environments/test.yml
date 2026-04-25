@@ -12,3 +12,5 @@ variables:
     value: "1"
   - name: redemption_id
     value: "1"
+  - name: ledger_entry_id
+    value: "1"
