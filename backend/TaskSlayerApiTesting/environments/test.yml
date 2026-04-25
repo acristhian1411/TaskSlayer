@@ -14,3 +14,7 @@ variables:
     value: "1"
   - name: ledger_entry_id
     value: "1"
+  - name: task_event_id
+    value: "1"
+  - name: event_timestamp
+    value: "2026-04-25T12:00:00Z"

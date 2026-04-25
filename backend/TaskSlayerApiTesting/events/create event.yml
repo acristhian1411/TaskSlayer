@@ -1,0 +1,28 @@
+info:
+  name: create event
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{base_url}}/task-events?task_id={{task_id}}&execution_id={{execution_id}}&type=pause&timestamp={{event_timestamp}}"
+  params:
+    - name: task_id
+      value: "{{task_id}}"
+      type: query
+    - name: execution_id
+      value: "{{execution_id}}"
+      type: query
+    - name: type
+      value: pause
+      type: query
+    - name: timestamp
+      value: "{{event_timestamp}}"
+      type: query
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
