@@ -1,0 +1,15 @@
+info:
+  name: complete execution
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{base_url}}/task-executions/{{execution_id}}/complete"
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

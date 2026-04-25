@@ -4,3 +4,11 @@ variables:
     value: 2|cRQZbq1gBM3m2PBeFXfK9qACAOZofYOVMJQQ2vdB3fd527d2
   - name: base_url
     value: http://localhost:8080/api
+  - name: task_id
+    value: "1"
+  - name: execution_id
+    value: "1"
+  - name: reward_id
+    value: "1"
+  - name: redemption_id
+    value: "1"
