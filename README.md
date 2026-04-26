@@ -1,5 +1,11 @@
 # TaskSlayer Docker Setup
 
+TaskSlayer convierte tareas en quests tipo RPG, con tablero de quests, forge de tareas, sesiones activas estilo boss battle, treasury y métricas de progreso.
+
+## Vista de referencia
+
+![TaskSlayer app preview](fronten/static/screen.png)
+
 Stack local inicial:
 
 - PostgreSQL 16
