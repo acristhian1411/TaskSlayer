@@ -78,7 +78,29 @@ El servicio frontend ejecuta automaticamente:
 
 Si package.json no existe, el contenedor queda en espera mostrando un mensaje.
 
-## 5) Comandos utiles
+## 5) Integracion con LM Studio
+
+El Forge usa LM Studio para transformar una tarea normal en una quest RPG desde el endpoint interno [fronten/src/routes/forge/generate/+server.js](fronten/src/routes/forge/generate/+server.js).
+
+Variables soportadas en el `.env` del proyecto:
+
+```bash
+LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
+LMSTUDIO_MODEL=local-model
+LMSTUDIO_API_KEY=
+```
+
+Notas de integracion:
+
+- `LMSTUDIO_BASE_URL` debe apuntar a una API compatible con OpenAI Chat Completions.
+- Si LM Studio corre en tu host local, el backend del frontend intenta automaticamente varias rutas: `127.0.0.1`, `host.docker.internal` y `172.17.0.1`.
+- `LMSTUDIO_API_KEY` es opcional. Solo se envia como bearer token si existe.
+- El Forge pide JSON valido con estas claves: `boss_name`, `narrative`, `difficulty_level`, `reward_points`, `tags`.
+- La descripcion final siempre conserva primero la instruccion original del usuario y luego el texto generado por el modelo.
+
+Si LM Studio no responde o devuelve una salida invalida, la app cae automaticamente a un modo deterministico para que el Forge siga funcionando sin bloquear la creacion de tareas.
+
+## 6) Comandos utiles
 
 ```bash
 docker compose ps
@@ -88,7 +110,7 @@ docker compose down
 docker compose down -v
 ```
 
-## 6) Aliases del proyecto
+## 7) Aliases del proyecto
 
 Se agregó un [Makefile](Makefile) para no repetir comandos largos.
 
