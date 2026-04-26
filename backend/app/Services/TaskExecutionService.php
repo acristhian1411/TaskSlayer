@@ -115,9 +115,9 @@ class TaskExecutionService
             $endedAt = isset($data['ended_at']) ? Carbon::parse($data['ended_at']) : null;
             $wasCompleted = (bool) ($data['was_completed'] ?? false);
 
-            $durationSeconds = (int) ($data['duration_seconds'] ?? 0);
+            $durationSeconds = $this->normalizeDurationSeconds($data['duration_seconds'] ?? 0);
             if ($endedAt !== null && !isset($data['duration_seconds'])) {
-                $durationSeconds = max(0, $startedAt->diffInSeconds($endedAt));
+                $durationSeconds = $this->secondsBetween($startedAt, $endedAt);
             }
 
             $execution = TaskExecution::create([
@@ -152,6 +152,21 @@ class TaskExecutionService
             ->findOrFail($executionId);
     }
 
+    public function currentForTaskUser(User $user, int $taskId): ?TaskExecution
+    {
+        Task::query()
+            ->where('user_id', $user->id)
+            ->findOrFail($taskId);
+
+        return TaskExecution::query()
+            ->where('user_id', $user->id)
+            ->where('task_id', $taskId)
+            ->with(['task', 'events'])
+            ->orderByRaw('CASE WHEN ended_at IS NULL THEN 0 ELSE 1 END')
+            ->orderByDesc('started_at')
+            ->first();
+    }
+
     public function updateForUser(User $user, int $executionId, array $data): TaskExecution
     {
         return DB::transaction(function () use ($user, $executionId, $data): TaskExecution {
@@ -163,6 +178,10 @@ class TaskExecutionService
                 'duration_seconds',
                 'was_completed',
             ]));
+
+            if (array_key_exists('duration_seconds', $fillable)) {
+                $fillable['duration_seconds'] = $this->normalizeDurationSeconds($fillable['duration_seconds']);
+            }
 
             $execution->fill($fillable);
             $execution->save();
@@ -228,7 +247,8 @@ class TaskExecutionService
             $lastRunningAt = $this->lastRunningMarker($execution);
 
             if ($effectivePause->greaterThan($lastRunningAt)) {
-                $execution->duration_seconds += $lastRunningAt->diffInSeconds($effectivePause);
+                $execution->duration_seconds = $this->normalizeDurationSeconds($execution->duration_seconds)
+                    + $this->secondsBetween($lastRunningAt, $effectivePause);
                 $execution->save();
             }
 
@@ -269,7 +289,8 @@ class TaskExecutionService
                 $lastRunningAt = $this->lastRunningMarker($execution);
 
                 if ($effectiveEnd->greaterThan($lastRunningAt)) {
-                    $execution->duration_seconds += $lastRunningAt->diffInSeconds($effectiveEnd);
+                    $execution->duration_seconds = $this->normalizeDurationSeconds($execution->duration_seconds)
+                        + $this->secondsBetween($lastRunningAt, $effectiveEnd);
                 }
             }
 
@@ -355,5 +376,19 @@ class TaskExecutionService
             'timestamp' => $at,
             'metadata' => $metadata,
         ]);
+    }
+
+    private function normalizeDurationSeconds(mixed $seconds): int
+    {
+        if (!is_numeric($seconds)) {
+            return 0;
+        }
+
+        return max(0, (int) floor((float) $seconds));
+    }
+
+    private function secondsBetween(Carbon $startedAt, Carbon $endedAt): int
+    {
+        return $this->normalizeDurationSeconds($startedAt->diffInSeconds($endedAt));
     }
 }

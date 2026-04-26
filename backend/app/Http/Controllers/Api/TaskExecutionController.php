@@ -75,6 +75,17 @@ class TaskExecutionController extends ApiController
         }
     }
 
+    public function currentForTask(Request $request, int $task): JsonResponse
+    {
+        try {
+            return response()->json([
+                'data' => $this->taskExecutionService->currentForTaskUser($request->user(), $task),
+            ]);
+        } catch (Throwable $e) {
+            return $this->respondException($e);
+        }
+    }
+
     public function update(UpdateTaskExecutionRequest $request, int $taskExecution): JsonResponse
     {
         try {
