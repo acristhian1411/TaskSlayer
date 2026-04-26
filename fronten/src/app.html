@@ -4,6 +4,18 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<script>
+			(() => {
+				const key = 'taskslayer.theme';
+				const raw = localStorage.getItem(key);
+				const preference = ['system', 'dark', 'light'].includes(raw) ? raw : 'system';
+				const systemTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+				const theme = preference === 'system' ? systemTheme : preference;
+
+				document.documentElement.dataset.theme = theme;
+				document.documentElement.dataset.themePreference = preference;
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
