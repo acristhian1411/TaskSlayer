@@ -77,4 +77,15 @@ class TaskController extends ApiController
             return $this->respondException($e);
         }
     }
+
+    public function uncomplete(Request $request, int $task): JsonResponse
+    {
+        try {
+            $task = $this->taskService->uncompleteForUser($request->user(), $task);
+
+            return $this->showAfterAction($task, 'update');
+        } catch (Throwable $e) {
+            return $this->respondException($e);
+        }
+    }
 }

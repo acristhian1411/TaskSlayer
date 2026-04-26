@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Task;
+use App\Models\TaskEvent;
+use App\Models\TaskExecution;
 use App\Models\User;
 use App\Models\UserPointsLedger;
 use Illuminate\Database\Eloquent\Collection;
@@ -76,6 +78,47 @@ class TaskService
                     'points' => $task->reward_points,
                 ]
             );
+
+            return $task->fresh(['executions', 'events']);
+        });
+    }
+
+    public function uncompleteForUser(User $user, int $taskId): Task
+    {
+        return DB::transaction(function () use ($user, $taskId): Task {
+            $task = $this->findForUser($user, $taskId);
+
+            if ($task->status === 'completed') {
+                $task->status = 'pending';
+                $task->save();
+            }
+
+            UserPointsLedger::query()
+                ->where('user_id', $user->id)
+                ->where('source_type', 'task_completed')
+                ->where('source_id', $task->id)
+                ->delete();
+
+            $latestCompletedExecution = TaskExecution::query()
+                ->where('user_id', $user->id)
+                ->where('task_id', $task->id)
+                ->where('was_completed', true)
+                ->orderByDesc('ended_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($latestCompletedExecution !== null) {
+                $latestCompletedExecution->was_completed = false;
+                $latestCompletedExecution->save();
+
+                TaskEvent::query()
+                    ->where('execution_id', $latestCompletedExecution->id)
+                    ->where('type', 'complete')
+                    ->orderByDesc('timestamp')
+                    ->orderByDesc('id')
+                    ->limit(1)
+                    ->update(['type' => 'stop']);
+            }
 
             return $task->fresh(['executions', 'events']);
         });
