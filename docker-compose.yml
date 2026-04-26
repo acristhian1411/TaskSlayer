@@ -61,20 +61,27 @@ services:
     container_name: taskslayer-frontend
     working_dir: /app
     restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      API_URL: http://backend/api
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080/api}
+      LMSTUDIO_BASE_URL: ${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      LMSTUDIO_MODEL: ${LMSTUDIO_MODEL:-local-model}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
-      - ./:/app
-      - node_modules:/app/node_modules
-    command: sh -c "if [ ! -f package.json ]; then echo 'No package.json found in
-      /app'; tail -f /dev/null; else npm install && npm run dev -- --host
-      0.0.0.0 --port 5173; fi"
+      - ./fronten:/app
+      - fronten_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     networks:
       - taskslayer-net
 
 volumes:
   postgres_data:
-  node_modules:
+  fronten_node_modules:
 
 networks:
   taskslayer-net:
