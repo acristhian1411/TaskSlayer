@@ -36,6 +36,21 @@ export const actions = {
     const difficultyLevel = toInt(formData.get('difficulty_level'), 1);
     const rewardPoints = toInt(formData.get('reward_points'), 10);
     const normalizedDescription = buildDescriptionWithSource(titleOriginal, description);
+    const checkpointsRaw = String(formData.get('checkpoints_json') || '[]').trim();
+
+    let checkpoints = [];
+    try {
+      const parsed = JSON.parse(checkpointsRaw);
+      checkpoints = Array.isArray(parsed)
+        ? parsed
+            .map((checkpoint) => ({
+              title: String(checkpoint?.title || '').trim()
+            }))
+            .filter((checkpoint) => checkpoint.title)
+        : [];
+    } catch {
+      checkpoints = [];
+    }
 
     if (!token) {
       return fail(401, {
@@ -74,7 +89,8 @@ export const actions = {
           description: normalizedDescription,
           difficulty_level: difficultyLevel,
           reward_points: rewardPoints,
-          status: 'pending'
+          status: 'pending',
+          checkpoints
         })
       });
 

@@ -7,6 +7,8 @@
     resolveTheme,
   } from "$lib/theme";
 
+  let { data, form } = $props();
+
   const themeOptions = [
     {
       value: "system",
@@ -56,6 +58,8 @@
       mediaQuery.removeEventListener("change", handleSystemThemeChange);
     };
   });
+
+  const llmConfig = $derived(form?.llmConfig || data?.llmConfig || null);
 </script>
 
 <div class="page-wrap settings-page">
@@ -90,6 +94,86 @@
         </button>
       {/each}
     </div>
+  </section>
+
+  <section class="glass-card settings-card" style="margin-top: 1rem;">
+    <div class="settings-card__header">
+      <div>
+        <p class="settings-label">AI</p>
+        <h2 class="settings-title">LLM Connection</h2>
+      </div>
+      <div class="settings-badge">Default: LM Studio</div>
+    </div>
+
+    <p class="settings-copy">
+      Configure OpenAI-compatible providers. If you reset this form, TaskSlayer
+      uses LM Studio values from <strong>fronten/.env</strong>.
+    </p>
+
+    {#if form?.message}
+      <p class="settings-status settings-status--ok">{form.message}</p>
+    {/if}
+
+    <form method="POST" action="?/saveLlm" class="settings-llm-form">
+      <label class="settings-field">
+        <span class="settings-label">Provider</span>
+        <select name="provider" class="forge-input forge-input--compact">
+          <option value="lmstudio" selected={llmConfig?.provider === "lmstudio"}
+            >LM Studio</option
+          >
+          <option
+            value="openai-compatible"
+            selected={llmConfig?.provider === "openai-compatible"}
+            >OpenAI-compatible</option
+          >
+        </select>
+      </label>
+
+      <label class="settings-field">
+        <span class="settings-label">Base URL</span>
+        <input
+          class="forge-input forge-input--compact"
+          type="url"
+          name="base_url"
+          required
+          value={llmConfig?.baseUrl || ""}
+          placeholder="https://api.openai.com/v1"
+        />
+      </label>
+
+      <label class="settings-field">
+        <span class="settings-label">Model</span>
+        <input
+          class="forge-input forge-input--compact"
+          type="text"
+          name="model"
+          required
+          value={llmConfig?.model || ""}
+          placeholder="gpt-4.1-mini"
+        />
+      </label>
+
+      <label class="settings-field">
+        <span class="settings-label">API Key</span>
+        <input
+          class="forge-input forge-input--compact"
+          type="password"
+          name="api_key"
+          value={llmConfig?.apiKey || ""}
+          placeholder="sk-..."
+        />
+      </label>
+
+      <div class="settings-llm-actions">
+        <button type="submit" class="action-epic">Save LLM Settings</button>
+      </div>
+    </form>
+
+    <form method="POST" action="?/resetLlm" class="settings-reset-form">
+      <button type="submit" class="task-link-btn task-link-btn--ghost">
+        Reset to LM Studio .env Defaults
+      </button>
+    </form>
   </section>
 
   <section class="settings-preview-grid">

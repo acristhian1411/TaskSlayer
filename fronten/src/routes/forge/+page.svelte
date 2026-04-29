@@ -2,6 +2,8 @@
   let { form } = $props();
 
   let inputTask = $state("Update user authentication logic...");
+  let checkpointDraft = $state("");
+  let checkpointItems = $state([]);
   let isForging = $state(false);
   let forgeError = $state("");
   let forgeNotice = $state("");
@@ -139,6 +141,7 @@
         },
         body: JSON.stringify({
           task: inputTask.trim(),
+          checkpoints: buildCheckpointPayload(checkpointItems),
         }),
       });
 
@@ -178,6 +181,44 @@
   function threatBar(level) {
     return `${clampDifficulty(level) * 25}%`;
   }
+
+  function addCheckpoint() {
+    const title = checkpointDraft.trim();
+
+    if (!title) {
+      return;
+    }
+
+    checkpointItems = [...checkpointItems, title];
+    checkpointDraft = "";
+  }
+
+  function removeCheckpoint(index) {
+    checkpointItems = checkpointItems.filter(
+      (_, itemIndex) => itemIndex !== index,
+    );
+  }
+
+  function updateCheckpoint(index, value) {
+    checkpointItems = checkpointItems.map((item, itemIndex) =>
+      itemIndex === index ? value : item,
+    );
+  }
+
+  function buildCheckpointPayload(values) {
+    return values
+      .map((title) => String(title || "").trim())
+      .filter(Boolean)
+      .map((title) => ({ title }));
+  }
+
+  const checkpointsPayloadJson = $derived(
+    JSON.stringify(buildCheckpointPayload(checkpointItems)),
+  );
+
+  const checkpointCount = $derived(
+    buildCheckpointPayload(checkpointItems).length,
+  );
 </script>
 
 <div class="page-wrap">
@@ -238,6 +279,65 @@
         style="margin: 0.75rem 0 0; font-size: 0.78rem; color: var(--text-muted);"
       >
         {engineStatus}
+      </p>
+
+      <label
+        class="eyebrow"
+        for="checkpointDraft"
+        style="margin-top: 1rem; display: block;">Raid Checkpoints</label
+      >
+      <div class="forge-checkpoint-entry">
+        <input
+          id="checkpointDraft"
+          class="forge-input forge-input--compact"
+          type="text"
+          bind:value={checkpointDraft}
+          placeholder="Add subtask checkpoint..."
+          onkeydown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              addCheckpoint();
+            }
+          }}
+        />
+        <button class="task-link-btn" type="button" onclick={addCheckpoint}>
+          Add
+        </button>
+      </div>
+
+      {#if checkpointItems.length > 0}
+        <div class="forge-checkpoint-list">
+          {#each checkpointItems as item, index}
+            <div class="forge-checkpoint-item">
+              <span class="tag">CP {index + 1}</span>
+              <input
+                class="forge-input forge-input--compact"
+                type="text"
+                value={item}
+                oninput={(event) =>
+                  updateCheckpoint(index, event.currentTarget.value)}
+              />
+              <button
+                class="task-link-btn task-link-btn--undo"
+                type="button"
+                onclick={() => removeCheckpoint(index)}
+              >
+                Remove
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <p
+        style="margin: 0.65rem 0 0; font-size: 0.78rem; color: var(--text-muted);"
+      >
+        {#if checkpointCount > 0}
+          {checkpointCount} subtasks added. Checkpoints grant 20% of total points;
+          final boss grants 80%.
+        {:else}
+          Add subtasks if this quest is a Raid.
+        {/if}
       </p>
     </article>
 
@@ -302,6 +402,11 @@
         value={forged.difficultyLevel}
       />
       <input type="hidden" name="reward_points" value={forged.rewardPoints} />
+      <input
+        type="hidden"
+        name="checkpoints_json"
+        value={checkpointsPayloadJson}
+      />
 
       <button
         class="action-epic"

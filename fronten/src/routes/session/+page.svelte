@@ -4,12 +4,17 @@
   import { onMount } from "svelte";
 
   let { data } = $props();
+  const initialTask = $derived(data.task || null);
+  let taskState = $state(null);
 
   let elapsedMs = $state(0);
   let isRunning = $state(false);
   let currentExecutionId = $state(null);
+  let currentExecutionCheckpointId = $state(null);
+  let selectedCheckpointId = $state(null);
   let commandPending = $state(false);
   let sessionError = $state("");
+  let sessionNotice = $state("");
   let intervalId = null;
   let startedAt = 0;
 
@@ -80,11 +85,12 @@
       throw new Error(result?.error || "Could not update quest session.");
     }
 
-    return result?.data || null;
+    return result || {};
   }
 
   function applyExecutionState(execution) {
     currentExecutionId = execution?.id || null;
+    currentExecutionCheckpointId = execution?.checkpointId || null;
     elapsedMs = getExecutionElapsedMs(execution);
     isRunning = isExecutionRunning(execution);
 
@@ -117,33 +123,37 @@
   }
 
   async function toggleTimer() {
-    if (!data.task?.id || commandPending) return;
+    if (!taskState?.id || commandPending) return;
 
     commandPending = true;
     sessionError = "";
 
     try {
       if (!currentExecutionId) {
-        const execution = await runSessionCommand("start", {
-          taskId: data.task.id,
+        const response = await runSessionCommand("start", {
+          taskId: taskState.id,
           startedAt: new Date().toISOString(),
+          checkpointId: selectedCheckpointId,
         });
+        const execution = response?.data || null;
         applyExecutionState(execution);
         return;
       }
 
       if (isRunning) {
         syncElapsed();
-        const execution = await runSessionCommand("pause", {
+        const response = await runSessionCommand("pause", {
           executionId: currentExecutionId,
         });
+        const execution = response?.data || null;
         applyExecutionState(execution);
         return;
       }
 
-      const execution = await runSessionCommand("resume", {
+      const response = await runSessionCommand("resume", {
         executionId: currentExecutionId,
       });
+      const execution = response?.data || null;
       applyExecutionState(execution);
     } catch (error) {
       sessionError = error?.message || "Could not update quest session.";
@@ -152,8 +162,58 @@
     }
   }
 
+  async function setCheckpointCompleted(checkpointId, completed) {
+    if (!taskState?.id || !checkpointId || commandPending) return;
+
+    if (isRunning && currentExecutionCheckpointId === checkpointId) {
+      sessionError = "Pause this checkpoint timer before changing its status.";
+      return;
+    }
+
+    commandPending = true;
+    sessionError = "";
+    sessionNotice = "";
+
+    try {
+      const response = await runSessionCommand(
+        completed ? "completeCheckpoint" : "uncompleteCheckpoint",
+        {
+          taskId: taskState.id,
+          checkpointId,
+        },
+      );
+
+      if (response?.task) {
+        taskState = response.task;
+
+        if (!completed) {
+          selectedCheckpointId = checkpointId;
+          sessionNotice = "Checkpoint reopened and focused.";
+        }
+      }
+    } catch (error) {
+      sessionError =
+        error?.message || "Could not update this checkpoint right now.";
+    } finally {
+      commandPending = false;
+    }
+  }
+
+  function focusCheckpoint(checkpointId) {
+    if (!checkpointId || commandPending) return;
+
+    selectedCheckpointId = checkpointId;
+    sessionError = "";
+    sessionNotice = "Checkpoint focused.";
+  }
+
   async function slayBoss() {
-    if (!data.task?.id || commandPending) return;
+    if (!taskState?.id || commandPending) return;
+
+    if (!allCheckpointsCompleted) {
+      sessionError = "Complete all checkpoints before slaying the final boss.";
+      return;
+    }
 
     commandPending = true;
     sessionError = "";
@@ -164,14 +224,22 @@
           syncElapsed();
         }
 
-        await runSessionCommand("completeExecution", {
+        const response = await runSessionCommand("completeExecution", {
           executionId: currentExecutionId,
           endedAt: new Date().toISOString(),
         });
+
+        if (response?.task) {
+          taskState = response.task;
+        }
       } else {
-        await runSessionCommand("completeTask", {
-          taskId: data.task.id,
+        const response = await runSessionCommand("completeTask", {
+          taskId: taskState.id,
         });
+
+        if (response?.task) {
+          taskState = response.task;
+        }
       }
 
       stopTicking();
@@ -185,9 +253,14 @@
   }
 
   onMount(() => {
-    if (!browser || !data.task?.id) return;
+    if (!browser || !taskState?.id) return;
 
     applyExecutionState(data.execution || null);
+
+    const firstPending = (taskState?.checkpoints || []).find(
+      (checkpoint) => !checkpoint.isCompleted,
+    );
+    selectedCheckpointId = firstPending?.id || null;
 
     return () => {
       if (isRunning) {
@@ -212,20 +285,37 @@
 
   const formattedTime = $derived(formatTime(elapsedMs));
   const difficultyLabel = $derived(
-    data.task ? getDifficultyLabel(data.task.difficultyLevel) : "Unknown",
+    taskState ? getDifficultyLabel(taskState.difficultyLevel) : "Unknown",
   );
   const encounterLabel = $derived(
-    data.task ? getEncounterLabel(data.task.difficultyLevel) : "Unknown",
+    taskState ? getEncounterLabel(taskState.difficultyLevel) : "Unknown",
+  );
+  const checkpoints = $derived(taskState?.checkpoints || []);
+  const completedCheckpoints = $derived(
+    checkpoints.filter((checkpoint) => checkpoint.isCompleted).length,
+  );
+  const allCheckpointsCompleted = $derived(
+    checkpoints.length === 0 || completedCheckpoints === checkpoints.length,
   );
   const bossProgress = $derived(
-    data.task ? getBossProgress(data.task.difficultyLevel) : 0,
+    checkpoints.length === 0
+      ? taskState
+        ? getBossProgress(taskState.difficultyLevel)
+        : 0
+      : Math.round((completedCheckpoints / checkpoints.length) * 100),
+  );
+  const selectedCheckpoint = $derived(
+    checkpoints.find((checkpoint) => checkpoint.id === selectedCheckpointId) ||
+      null,
   );
   const actionLabel = $derived(
     currentExecutionId
       ? isRunning
         ? "Pause Quest"
         : "Resume Quest"
-      : "Start Quest",
+      : selectedCheckpoint
+        ? "Start Checkpoint"
+        : "Start Boss Fight",
   );
   const actionIcon = $derived(
     currentExecutionId ? (isRunning ? "II" : ">") : ">",
@@ -233,9 +323,37 @@
   const questStatusLabel = $derived(
     currentExecutionId ? (isRunning ? "running" : "paused") : "not started",
   );
+
+  $effect(() => {
+    if (taskState === null && initialTask) {
+      taskState = initialTask;
+    }
+  });
+
+  $effect(() => {
+    if (!taskState?.checkpoints?.length) {
+      selectedCheckpointId = null;
+      return;
+    }
+
+    const selectedStillPending = taskState.checkpoints.some(
+      (checkpoint) =>
+        checkpoint.id === selectedCheckpointId && !checkpoint.isCompleted,
+    );
+
+    if (selectedStillPending) {
+      return;
+    }
+
+    const firstPending = taskState.checkpoints.find(
+      (checkpoint) => !checkpoint.isCompleted,
+    );
+
+    selectedCheckpointId = firstPending?.id || null;
+  });
 </script>
 
-{#if data.loadError || !data.task}
+{#if data.loadError || !taskState}
   <section class="boss-session">
     <div class="boss-session__aurora boss-session__aurora--left"></div>
     <div class="boss-session__aurora boss-session__aurora--right"></div>
@@ -264,7 +382,10 @@
       <header class="boss-session__status">
         <div class="boss-session__status-copy">
           <span class="eyebrow">Target Difficulty: {difficultyLabel}</span>
-          <span class="eyebrow">Reward: {data.task.rewardPoints} pts</span>
+          <span class="eyebrow"
+            >Reward: {taskState.rewardPoints} pts ({taskState.bossRewardPoints}
+            boss / {taskState.checkpointRewardTotal} checkpoints)</span
+          >
         </div>
 
         <div
@@ -283,17 +404,95 @@
       </header>
 
       <div class="boss-session__center">
-        <p class="boss-session__eyebrow">Encountering</p>
+        <p class="boss-session__eyebrow">Raid Route</p>
 
         <h1 class="boss-session__title">
-          {data.task.title}
+          {taskState.title}
           <span>{encounterLabel} Quest</span>
         </h1>
 
-        <p class="boss-session__description">{data.task.detail}</p>
+        <p class="boss-session__description">{taskState.detail}</p>
+
+        <div class="raid-path glass-card">
+          {#if checkpoints.length === 0}
+            <div class="raid-path__empty">
+              <p>
+                No checkpoints for this quest. You can go straight to the boss.
+              </p>
+            </div>
+          {:else}
+            {#each checkpoints as checkpoint, index}
+              <article
+                class="raid-node"
+                class:raid-node--completed={checkpoint.isCompleted}
+                class:raid-node--active={!checkpoint.isCompleted &&
+                  selectedCheckpointId === checkpoint.id}
+              >
+                <div class="raid-node__step">CP {index + 1}</div>
+                <h3>{checkpoint.title}</h3>
+                {#if !checkpoint.isCompleted && selectedCheckpointId === checkpoint.id}
+                  <p class="raid-node__focus">Focused checkpoint</p>
+                {/if}
+                <p>Reward: +{checkpoint.rewardPointsSmall} pts</p>
+                <div class="raid-node__actions">
+                  {#if !checkpoint.isCompleted}
+                    <button
+                      type="button"
+                      class="session-btn session-btn--pause"
+                      disabled={commandPending}
+                      onclick={() => focusCheckpoint(checkpoint.id)}
+                    >
+                      Focus
+                    </button>
+                    <button
+                      type="button"
+                      class="session-btn session-btn--slay"
+                      disabled={commandPending}
+                      onclick={() => {
+                        setCheckpointCompleted(checkpoint.id, true);
+                      }}
+                    >
+                      Clear
+                    </button>
+                  {:else}
+                    <button
+                      type="button"
+                      class="session-btn session-btn--pause"
+                      disabled={commandPending}
+                      onclick={() => {
+                        setCheckpointCompleted(checkpoint.id, false);
+                      }}
+                    >
+                      Reopen
+                    </button>
+                  {/if}
+                </div>
+              </article>
+            {/each}
+          {/if}
+
+          <article
+            class="raid-node raid-node--boss"
+            class:raid-node--completed={allCheckpointsCompleted}
+          >
+            <div class="raid-node__step">FINAL</div>
+            <h3>Boss Gate</h3>
+            <p>
+              {#if allCheckpointsCompleted}
+                Path unlocked. Finish with +{taskState.bossRewardPoints} pts.
+              {:else}
+                Locked until all checkpoints are cleared.
+              {/if}
+            </p>
+          </article>
+        </div>
 
         {#if sessionError}
           <p class="boss-session__error">{sessionError}</p>
+        {/if}
+
+        {#if sessionNotice}
+          <p class="boss-session__notice">{sessionNotice}</p>
         {/if}
 
         <div class="boss-timer glass-card">
@@ -320,23 +519,31 @@
         <button
           class="session-btn session-btn--slay"
           type="button"
-          disabled={commandPending}
+          disabled={commandPending || !allCheckpointsCompleted}
           onclick={slayBoss}
         >
           <span class="session-btn__icon" aria-hidden="true">X</span>
-          <span>{commandPending ? "Finishing..." : "Slay Boss"}</span>
+          <span
+            >{commandPending
+              ? "Finishing..."
+              : allCheckpointsCompleted
+                ? "Slay Boss"
+                : "Boss Locked"}</span
+          >
         </button>
       </div>
 
       <footer class="boss-session__meta">
         <div class="boss-buff glass-card">
           <span class="boss-buff__badge" aria-hidden="true"
-            >+{data.task.rewardPoints}</span
+            >+{taskState.rewardPoints}</span
           >
           <div>
             <p class="boss-buff__label">Active Quest</p>
             <p class="boss-buff__value">
-              {difficultyLabel} difficulty, status: {questStatusLabel}
+              {difficultyLabel} difficulty, status: {questStatusLabel},
+              checkpoints:
+              {completedCheckpoints}/{checkpoints.length}
             </p>
           </div>
         </div>

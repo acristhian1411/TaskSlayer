@@ -1,6 +1,40 @@
 import { json } from '@sveltejs/kit';
 import { fetchBackend } from '$lib/server/api';
 
+function mapTask(task) {
+  const checkpoints = Array.isArray(task?.checkpoints)
+    ? task.checkpoints
+        .map((checkpoint) => ({
+          id: Number(checkpoint?.id || 0),
+          title: String(checkpoint?.title || 'Checkpoint'),
+          isCompleted: Boolean(checkpoint?.is_completed),
+          orderIndex: Number(checkpoint?.order_index || 0),
+          rewardPointsSmall: Number(checkpoint?.reward_points_small || 0)
+        }))
+        .filter((checkpoint) => checkpoint.id > 0)
+        .sort((left, right) => left.orderIndex - right.orderIndex)
+    : [];
+
+  const checkpointRewardTotal = checkpoints.reduce(
+    (sum, checkpoint) => sum + checkpoint.rewardPointsSmall,
+    0
+  );
+
+  return {
+    id: Number(task?.id || 0),
+    title: task?.title_rpg || task?.title_original || 'Unknown Quest',
+    detail: task?.description || 'No quest details available.',
+    difficultyLevel: Number(task?.difficulty_level || 1),
+    rewardPoints: Number(task?.reward_points || 0),
+    hasCheckpoints: Boolean(task?.has_checkpoints),
+    checkpoints,
+    checkpointRewardTotal,
+    bossRewardPoints: Math.max(0, Number(task?.reward_points || 0) - checkpointRewardTotal),
+    status: String(task?.status || 'pending'),
+    createdAt: task?.created_at || null
+  };
+}
+
 function getLatestLifecycleEvent(events = []) {
   return [...events]
     .filter((event) => ['start', 'pause', 'resume', 'stop', 'complete'].includes(event?.type))
@@ -41,6 +75,10 @@ function mapExecution(execution) {
   return {
     id: Number(execution.id),
     taskId: Number(execution?.task_id || 0),
+    checkpointId:
+      execution?.checkpoint_id === null || execution?.checkpoint_id === undefined
+        ? null
+        : Number(execution?.checkpoint_id || 0),
     durationSeconds: Number(execution?.duration_seconds || 0),
     startedAt: execution?.started_at || null,
     endedAt: execution?.ended_at || null,
@@ -56,7 +94,10 @@ function buildRequest(action, payload) {
     return {
       path: `/tasks/${payload.taskId}/executions/start`,
       method: 'POST',
-      body: payload.startedAt ? { started_at: payload.startedAt } : {}
+      body: {
+        ...(payload.startedAt ? { started_at: payload.startedAt } : {}),
+        ...(payload.checkpointId ? { checkpoint_id: payload.checkpointId } : {})
+      }
     };
   }
 
@@ -87,6 +128,22 @@ function buildRequest(action, payload) {
   if (action === 'completeTask') {
     return {
       path: `/tasks/${payload.taskId}/complete`,
+      method: 'POST',
+      body: {}
+    };
+  }
+
+  if (action === 'completeCheckpoint') {
+    return {
+      path: `/tasks/${payload.taskId}/checkpoints/${payload.checkpointId}/complete`,
+      method: 'POST',
+      body: {}
+    };
+  }
+
+  if (action === 'uncompleteCheckpoint') {
+    return {
+      path: `/tasks/${payload.taskId}/checkpoints/${payload.checkpointId}/uncomplete`,
       method: 'POST',
       body: {}
     };
@@ -129,8 +186,13 @@ export async function POST({ cookies, fetch, request }) {
       );
     }
 
+    const rawData = responsePayload?.data || null;
+    const mappedExecution = rawData?.task_id ? mapExecution(rawData) : null;
+    const mappedTask = rawData?.title_original || rawData?.title_rpg ? mapTask(rawData) : null;
+
     return json({
-      data: mapExecution(responsePayload?.data || null),
+      data: mappedExecution,
+      task: mappedTask,
       message: responsePayload?.message || null
     });
   } catch {

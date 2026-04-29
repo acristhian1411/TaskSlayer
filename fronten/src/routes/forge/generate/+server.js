@@ -1,8 +1,51 @@
 import { env } from '$env/dynamic/private';
 import { json } from '@sveltejs/kit';
 
+const LLM_COOKIE_NAME = 'taskslayer_llm_config';
+
 function normalizeUrl(url) {
   return String(url || '').endsWith('/') ? String(url).slice(0, -1) : String(url);
+}
+
+function parseStoredLlmConfig(rawValue) {
+  if (!rawValue) return null;
+
+  try {
+    const parsed = JSON.parse(rawValue);
+
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    return {
+      provider: String(parsed.provider || '').trim() || 'lmstudio',
+      baseUrl: normalizeUrl(parsed.baseUrl || ''),
+      model: String(parsed.model || '').trim(),
+      apiKey: String(parsed.apiKey || '')
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveLlmConfig(storedConfig) {
+  const defaults = {
+    provider: 'lmstudio',
+    baseUrl: normalizeUrl(env.LMSTUDIO_BASE_URL || 'http://127.0.0.1:1234/v1'),
+    model: String(env.LMSTUDIO_MODEL || 'local-model'),
+    apiKey: String(env.LMSTUDIO_API_KEY || '')
+  };
+
+  if (!storedConfig) {
+    return defaults;
+  }
+
+  return {
+    provider: storedConfig.provider || defaults.provider,
+    baseUrl: storedConfig.baseUrl || defaults.baseUrl,
+    model: storedConfig.model || defaults.model,
+    apiKey: storedConfig.apiKey || defaults.apiKey
+  };
 }
 
 function buildLmStudioBaseCandidates(baseUrl) {
@@ -106,12 +149,40 @@ function normalizeForgePayload(raw, originalTask) {
   };
 }
 
-function buildMessages(task) {
+function buildMessages(task, checkpoints = []) {
+  const checkpointTitles = Array.isArray(checkpoints)
+    ? checkpoints
+        .map((cp) => String(cp?.title || cp || '').trim())
+        .filter(Boolean)
+    : [];
+
+  let systemContent =
+    `Actua como un disenador de tareas RPG para productividad tecnica.
+Responde en espanol y devuelve SOLO JSON valido con claves:
+boss_name, narrative, difficulty_level, reward_points, tags.
+REGLAS:
+- La tarea del usuario es el eje principal. TODO debe derivar de ella.
+- Puedes usar un tono ligero de fantasia (metaforas, "boss", etc.), pero SIN crear mundos o historias irrelevantes.
+- El boss_name debe ser una version metaforica de la tarea, manteniendo palabras clave reconocibles.
+- narrative debe describir el reto tecnico con un toque RPG, pero enfocado en lo que realmente hay que hacer.
+- Maximo 2-3 lineas de narrativa.
+- Incluye al menos una palabra exacta de la tarea en boss_name o narrative.
+RESTRICCIONES:
+- difficulty_level: entero entre 1 y 4.
+- reward_points: uno de [10, 30, 60, 120].
+- tags: arreglo de 1 a 4 palabras directamente relacionadas con la tarea.`;
+
+  if (checkpointTitles.length > 0) {
+    systemContent +=
+      '\n\nEl usuario ha definido estos checkpoints (subtareas) para esta raid:\n' +
+      checkpointTitles.map((title, i) => `${i + 1}. ${title}`).join('\n') +
+      '\n\nGenera una narrativa que sea coherente con estos checkpoints.';
+  }
+
   return [
     {
       role: 'system',
-      content:
-        'Actua como un disenador de tareas RPG. Responde en espanol y devuelve solo JSON valido con claves: boss_name, narrative, difficulty_level, reward_points, tags.'
+      content: systemContent
     },
     {
       role: 'user',
@@ -125,25 +196,29 @@ function buildMessages(task) {
   ];
 }
 
-export async function POST({ request, fetch }) {
+export async function POST({ request, fetch, cookies }) {
   const payload = await request.json().catch(() => ({}));
   const task = String(payload?.task || '').trim();
+  const checkpoints = Array.isArray(payload?.checkpoints) ? payload.checkpoints : [];
 
   if (!task) {
     return json({ ok: false, error: 'Task is required.' }, { status: 400 });
   }
 
-  const lmStudioBase = normalizeUrl(env.LMSTUDIO_BASE_URL || 'http://127.0.0.1:1234/v1');
-  const baseCandidates = buildLmStudioBaseCandidates(lmStudioBase);
-  const lmStudioModel = env.LMSTUDIO_MODEL || 'local-model';
-  const lmStudioApiKey = env.LMSTUDIO_API_KEY || '';
+  const storedConfig = parseStoredLlmConfig(cookies.get(LLM_COOKIE_NAME));
+  const llmConfig = resolveLlmConfig(storedConfig);
+
+  const baseCandidates =
+    llmConfig.provider === 'lmstudio'
+      ? buildLmStudioBaseCandidates(llmConfig.baseUrl)
+      : [normalizeUrl(llmConfig.baseUrl)].filter(Boolean);
 
   const headers = {
     'Content-Type': 'application/json'
   };
 
-  if (lmStudioApiKey) {
-    headers.Authorization = `Bearer ${lmStudioApiKey}`;
+  if (llmConfig.apiKey) {
+    headers.Authorization = `Bearer ${llmConfig.apiKey}`;
   }
 
   let lastConnectionError = null;
@@ -154,11 +229,11 @@ export async function POST({ request, fetch }) {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          model: lmStudioModel,
+          model: llmConfig.model,
           temperature: 0.2,
           max_tokens: 220,
           response_format: { type: 'text' },
-          messages: buildMessages(task)
+          messages: buildMessages(task, checkpoints)
         })
       });
 
@@ -168,7 +243,7 @@ export async function POST({ request, fetch }) {
         const reason =
           lmPayload?.error?.message ||
           lmPayload?.error ||
-          `LM Studio returned status ${response.status}`;
+          `LLM provider returned status ${response.status}`;
         return json({ ok: false, error: String(reason) }, { status: response.status });
       }
 
@@ -179,7 +254,7 @@ export async function POST({ request, fetch }) {
         return json(
           {
             ok: false,
-            error: 'LM Studio response did not contain valid JSON.'
+            error: 'LLM provider response did not contain valid JSON.'
           },
           { status: 502 }
         );
@@ -197,7 +272,7 @@ export async function POST({ request, fetch }) {
   return json(
     {
       ok: false,
-      error: `LM Studio connection failed: ${lastConnectionError || 'unknown error'}`
+      error: `LLM connection failed: ${lastConnectionError || 'unknown error'}`
     },
     { status: 503 }
   );
