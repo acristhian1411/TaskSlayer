@@ -114,7 +114,8 @@ class TaskExecutionController extends ApiController
             $execution = $this->taskExecutionService->startForUser(
                 $request->user(),
                 $task,
-                $request->validated()['started_at'] ?? null
+                $request->validated()['started_at'] ?? null,
+                $request->validated()['checkpoint_id'] ?? null
             );
 
             return $this->showAfterAction($execution, 'create', 201);

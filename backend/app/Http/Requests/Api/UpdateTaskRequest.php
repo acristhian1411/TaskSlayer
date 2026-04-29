@@ -21,6 +21,8 @@ class UpdateTaskRequest extends FormRequest
             'difficulty_level' => ['sometimes', 'integer', 'min:1', 'max:4'],
             'reward_points' => ['sometimes', 'integer', 'min:0'],
             'status' => ['sometimes', 'string', Rule::in(['pending', 'completed', 'archived'])],
+            'checkpoints' => ['sometimes', 'array', 'max:30'],
+            'checkpoints.*.title' => ['required_with:checkpoints', 'string', 'max:255'],
         ];
     }
 }

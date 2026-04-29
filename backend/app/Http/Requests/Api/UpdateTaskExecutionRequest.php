@@ -14,6 +14,7 @@ class UpdateTaskExecutionRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'checkpoint_id' => ['nullable', 'integer', 'exists:task_checkpoints,id'],
             'started_at' => ['sometimes', 'date'],
             'ended_at' => ['nullable', 'date'],
             'duration_seconds' => ['sometimes', 'integer', 'min:0'],

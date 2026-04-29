@@ -21,6 +21,8 @@ class StoreTaskRequest extends FormRequest
             'difficulty_level' => ['required', 'integer', 'min:1', 'max:4'],
             'reward_points' => ['required', 'integer', 'min:0'],
             'status' => ['sometimes', 'string', Rule::in(['pending', 'completed', 'archived'])],
+            'checkpoints' => ['sometimes', 'array', 'max:30'],
+            'checkpoints.*.title' => ['required_with:checkpoints', 'string', 'max:255'],
         ];
     }
 }

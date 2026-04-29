@@ -22,6 +22,8 @@ Route::prefix('auth')->group(function (): void {
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('tasks/{task}/complete', [TaskController::class, 'complete']);
     Route::post('tasks/{task}/uncomplete', [TaskController::class, 'uncomplete']);
+    Route::post('tasks/{task}/checkpoints/{checkpoint}/complete', [TaskController::class, 'completeCheckpoint']);
+    Route::post('tasks/{task}/checkpoints/{checkpoint}/uncomplete', [TaskController::class, 'uncompleteCheckpoint']);
     Route::post('tasks/{task}/executions/start', [TaskExecutionController::class, 'start']);
     Route::get('tasks/{task}/executions/current', [TaskExecutionController::class, 'currentForTask']);
     Route::post('task-executions/{taskExecution}/pause', [TaskExecutionController::class, 'pause']);

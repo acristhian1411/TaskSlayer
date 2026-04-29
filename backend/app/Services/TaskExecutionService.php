@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Task;
+use App\Models\TaskCheckpoint;
 use App\Models\TaskEvent;
 use App\Models\TaskExecution;
 use App\Models\User;
@@ -10,6 +11,7 @@ use App\Models\UserPointsLedger;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class TaskExecutionService
 {
@@ -99,7 +101,7 @@ class TaskExecutionService
     {
         return TaskExecution::query()
             ->where('user_id', $user->id)
-            ->with(['task', 'events'])
+            ->with(['task', 'checkpoint', 'events'])
             ->orderByDesc('started_at')
             ->get();
     }
@@ -110,6 +112,8 @@ class TaskExecutionService
             $task = Task::query()
                 ->where('user_id', $user->id)
                 ->findOrFail($data['task_id']);
+
+            $checkpointId = $this->resolveCheckpointId($task, $data['checkpoint_id'] ?? null);
 
             $startedAt = Carbon::parse($data['started_at']);
             $endedAt = isset($data['ended_at']) ? Carbon::parse($data['ended_at']) : null;
@@ -122,6 +126,7 @@ class TaskExecutionService
 
             $execution = TaskExecution::create([
                 'task_id' => $task->id,
+                'checkpoint_id' => $checkpointId,
                 'user_id' => $user->id,
                 'started_at' => $startedAt,
                 'ended_at' => $endedAt,
@@ -140,7 +145,7 @@ class TaskExecutionService
                 }
             }
 
-            return $execution->fresh(['task', 'events']);
+            return $execution->fresh(['task', 'checkpoint', 'events']);
         });
     }
 
@@ -148,7 +153,7 @@ class TaskExecutionService
     {
         return TaskExecution::query()
             ->where('user_id', $user->id)
-            ->with(['task', 'events'])
+            ->with(['task', 'checkpoint', 'events'])
             ->findOrFail($executionId);
     }
 
@@ -161,7 +166,7 @@ class TaskExecutionService
         return TaskExecution::query()
             ->where('user_id', $user->id)
             ->where('task_id', $taskId)
-            ->with(['task', 'events'])
+            ->with(['task', 'checkpoint', 'events'])
             ->orderByRaw('CASE WHEN ended_at IS NULL THEN 0 ELSE 1 END')
             ->orderByDesc('started_at')
             ->first();
@@ -173,11 +178,16 @@ class TaskExecutionService
             $execution = $this->findForUser($user, $executionId);
 
             $fillable = array_intersect_key($data, array_flip([
+                'checkpoint_id',
                 'started_at',
                 'ended_at',
                 'duration_seconds',
                 'was_completed',
             ]));
+
+            if (array_key_exists('checkpoint_id', $fillable)) {
+                $fillable['checkpoint_id'] = $this->resolveCheckpointId($execution->task, $fillable['checkpoint_id']);
+            }
 
             if (array_key_exists('duration_seconds', $fillable)) {
                 $fillable['duration_seconds'] = $this->normalizeDurationSeconds($fillable['duration_seconds']);
@@ -190,7 +200,7 @@ class TaskExecutionService
                 $this->awardCompletionPoints($user, $execution->task, Carbon::now());
             }
 
-            return $execution->fresh(['task', 'events']);
+            return $execution->fresh(['task', 'checkpoint', 'events']);
         });
     }
 
@@ -200,12 +210,14 @@ class TaskExecutionService
         $execution->delete();
     }
 
-    public function startForUser(User $user, int $taskId, ?string $startedAt = null): TaskExecution
+    public function startForUser(User $user, int $taskId, ?string $startedAt = null, ?int $checkpointId = null): TaskExecution
     {
-        return DB::transaction(function () use ($user, $taskId, $startedAt): TaskExecution {
+        return DB::transaction(function () use ($user, $taskId, $startedAt, $checkpointId): TaskExecution {
             $task = Task::query()
                 ->where('user_id', $user->id)
                 ->findOrFail($taskId);
+
+            $resolvedCheckpointId = $this->resolveCheckpointId($task, $checkpointId);
 
             $activeExecution = TaskExecution::query()
                 ->where('user_id', $user->id)
@@ -215,13 +227,14 @@ class TaskExecutionService
                 ->first();
 
             if ($activeExecution !== null) {
-                return $activeExecution->load(['task', 'events']);
+                return $activeExecution->load(['task', 'checkpoint', 'events']);
             }
 
             $effectiveStart = $startedAt ? Carbon::parse($startedAt) : Carbon::now();
 
             $execution = TaskExecution::create([
                 'task_id' => $task->id,
+                'checkpoint_id' => $resolvedCheckpointId,
                 'user_id' => $user->id,
                 'started_at' => $effectiveStart,
                 'duration_seconds' => 0,
@@ -230,7 +243,7 @@ class TaskExecutionService
 
             $this->createEvent($task->id, $execution->id, 'start', $effectiveStart, ['source' => 'api']);
 
-            return $execution->fresh(['task', 'events']);
+            return $execution->fresh(['task', 'checkpoint', 'events']);
         });
     }
 
@@ -254,7 +267,7 @@ class TaskExecutionService
 
             $this->createEvent($execution->task_id, $execution->id, 'pause', $effectivePause, ['source' => 'api']);
 
-            return $execution->fresh(['task', 'events']);
+            return $execution->fresh(['task', 'checkpoint', 'events']);
         });
     }
 
@@ -270,7 +283,7 @@ class TaskExecutionService
             $effectiveResume = $resumedAt ? Carbon::parse($resumedAt) : Carbon::now();
             $this->createEvent($execution->task_id, $execution->id, 'resume', $effectiveResume, ['source' => 'api']);
 
-            return $execution->fresh(['task', 'events']);
+            return $execution->fresh(['task', 'checkpoint', 'events']);
         });
     }
 
@@ -305,7 +318,7 @@ class TaskExecutionService
                 $this->awardCompletionPoints($user, $execution->task, $effectiveEnd);
             }
 
-            return $execution->fresh(['task', 'events']);
+            return $execution->fresh(['task', 'checkpoint', 'events']);
         });
     }
 
@@ -316,10 +329,23 @@ class TaskExecutionService
 
     private function awardCompletionPoints(User $user, Task $task, Carbon $awardedAt): void
     {
+        if ($task->has_checkpoints) {
+            $pendingCheckpoints = $task->checkpoints()->where('is_completed', false)->count();
+            if ($pendingCheckpoints > 0) {
+                throw new LogicException('Complete all checkpoints before fighting the final boss.');
+            }
+        }
+
         if ($task->status !== 'completed') {
             $task->status = 'completed';
             $task->save();
         }
+
+        $checkpointSum = $task->has_checkpoints
+            ? (int) $task->checkpoints()->sum('reward_points_small')
+            : 0;
+
+        $bossReward = max(0, (int) $task->reward_points - $checkpointSum);
 
         UserPointsLedger::firstOrCreate(
             [
@@ -328,10 +354,30 @@ class TaskExecutionService
                 'source_id' => $task->id,
             ],
             [
-                'points' => $task->reward_points,
+                'points' => $bossReward,
                 'created_at' => $awardedAt,
             ]
         );
+    }
+
+    private function resolveCheckpointId(Task $task, mixed $checkpointId): ?int
+    {
+        if ($checkpointId === null || $checkpointId === '') {
+            return null;
+        }
+
+        if (!is_numeric($checkpointId)) {
+            throw new LogicException('Invalid checkpoint id.');
+        }
+
+        $resolvedId = (int) $checkpointId;
+
+        TaskCheckpoint::query()
+            ->where('id', $resolvedId)
+            ->where('task_id', $task->id)
+            ->firstOrFail();
+
+        return $resolvedId;
     }
 
     private function isPaused(TaskExecution $execution): bool

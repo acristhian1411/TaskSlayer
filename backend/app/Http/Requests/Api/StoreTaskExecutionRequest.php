@@ -15,6 +15,7 @@ class StoreTaskExecutionRequest extends FormRequest
     {
         return [
             'task_id' => ['required', 'integer', 'exists:tasks,id'],
+            'checkpoint_id' => ['nullable', 'integer', 'exists:task_checkpoints,id'],
             'started_at' => ['required', 'date'],
             'ended_at' => ['nullable', 'date', 'after_or_equal:started_at'],
             'duration_seconds' => ['sometimes', 'integer', 'min:0'],

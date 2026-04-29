@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'task_id',
+    'checkpoint_id',
     'user_id',
     'started_at',
     'ended_at',
@@ -25,6 +26,7 @@ class TaskExecution extends Model
     protected function casts(): array
     {
         return [
+            'checkpoint_id' => 'integer',
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
             'duration_seconds' => 'integer',
@@ -40,6 +42,11 @@ class TaskExecution extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function checkpoint(): BelongsTo
+    {
+        return $this->belongsTo(TaskCheckpoint::class, 'checkpoint_id');
     }
 
     public function events(): HasMany

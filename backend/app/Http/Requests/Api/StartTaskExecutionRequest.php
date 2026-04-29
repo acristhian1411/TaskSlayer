@@ -15,6 +15,7 @@ class StartTaskExecutionRequest extends FormRequest
     {
         return [
             'started_at' => ['sometimes', 'date'],
+            'checkpoint_id' => ['nullable', 'integer', 'exists:task_checkpoints,id'],
         ];
     }
 }

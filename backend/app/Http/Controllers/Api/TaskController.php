@@ -88,4 +88,26 @@ class TaskController extends ApiController
             return $this->respondException($e);
         }
     }
+
+    public function completeCheckpoint(Request $request, int $task, int $checkpoint): JsonResponse
+    {
+        try {
+            $updatedTask = $this->taskService->completeCheckpointForUser($request->user(), $task, $checkpoint);
+
+            return $this->showAfterAction($updatedTask, 'update');
+        } catch (Throwable $e) {
+            return $this->respondException($e);
+        }
+    }
+
+    public function uncompleteCheckpoint(Request $request, int $task, int $checkpoint): JsonResponse
+    {
+        try {
+            $updatedTask = $this->taskService->uncompleteCheckpointForUser($request->user(), $task, $checkpoint);
+
+            return $this->showAfterAction($updatedTask, 'update');
+        } catch (Throwable $e) {
+            return $this->respondException($e);
+        }
+    }
 }
